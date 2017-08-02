@@ -1,0 +1,104 @@
+
+AUTHOR: Luis Ruano Gullon
+DATE: 02/08/2017
+
+
+
+
+******************************************
+-- MODEM PROTOCOL (GATEWAY <-> BACKEND) --
+******************************************
+
+-- PACKET STRUCTURE --
+------------------------------------------------------------------------------
+| OPENING FLAG | DEVICE | MESSAGE LENGTH |  MESSAGE  |  CRC8  | CLOSING FLAG |
+|--------------|--------|----------------|-----------|--------|--------------|
+|    1 byte    | 1 byte |     1 byte     |   Up to   | 1 byte |	   1 bytes   |
+|			   |		|				 | 123 bytes | 		  |				 |
+------------------------------------------------------------------------------
+
+- OPENING FLAG: 0xF9
+- DEVICE: Determines de device which receives/sents the message.
+		- Sensor = 0x00
+		- Gateway = 0x01
+
+- MESSAGE LENGTH: Determines the message body size. Max value = 123 bytes.
+- MESSAGE: Message body. Length up to 123 bytes
+		- First byte contains the command
+		- Following bytes contain extra information if required (Not used on the commands implemented but intended to support more complex commands if implemented in future) 
+
+- CRC8: Checksum to verify packet.
+- CLOSING FLAG: 0xF8
+
+
+For the purpose of this test, the commands are definde using single bytes. Although it may restrict the number of commands to be implemented, it also saves energy in the communication. 
+
+
+
+-- GATEWAY.C - CODE EXPLANATION --
+
+When 'handle_communication' is called, it firstly checks wheteher a message was received (from the backend or from a sensor). 
+If there is a message from the backend, it firstly verifies the message by checking:
+ 	1. The total size of the packet (smaller than 128 bytes).
+ 	2. The opening and closing flags after having read the message body length.
+ 	3. The crc8.
+
+Once verified and with positive outcome, it is read the 'device' field in order to see the target of it. 
+If the target is the Gateway, it reads the command and process it. 
+If the target is the sensor, it verifies the message size (smaller than 28 bytes) and prepares the message of the packet to be sent to the sensor. 
+
+If there is a message from a sensor, it does a similar thing as it checks:
+	1. The message length (smaller than 28 bytes).
+	2. The opening and closing flags.
+	3. The crc8.
+
+If succesful, it prepares the message to be sent to the backend.
+
+Finally, the packet is prepared and sent to its destination (backend or sensor)
+
+
+
+
+
+******************************************
+-- 868MHz PROTOCOL (GATEWAY <-> SENSOR) --
+******************************************
+
+-- PACKET STRUCTURE --
+---------------------------------------------------------------------
+| OPENING FLAG | MESSAGE LENGTH |  MESSAGE  |  CRC8  | CLOSING FLAG |
+|--------------|----------------|-----------|--------|--------------|
+|    1 byte    |     1 byte     |    Up to  | 1 byte |	  1 bytes   |
+|			   |				|  28 bytes | 		 |	   		    |
+---------------------------------------------------------------------
+
+- OPENING FLAG: 0xF7
+- MESSAGE LENGTH: Determines the message body size. Max value = 28 bytes.
+- MESSAGE: Message body. Length up to 28 bytes
+		- First byte contains the command
+		- Following bytes contain extra information if required (Used for ADD NEW KI and REMOVE KI commands) 
+
+- CRC8: Checksum to verify packet.
+- CLOSING FLAG: 0xF6
+
+
+-- SENSOR.C - CODE EXPLANATION --
+
+Within 'handle_communication' function, firstly it is checked if there is a new message. If so it goes through a verification of the packet:
+
+	1. Verification of message body length.
+	2. Verification of opening and closing flags.
+	3. Verification of crc8.
+
+If succesful, then it reads the command and process it. Within the different cases the message body is prepared. Finally, the packet is prepared and sent.
+
+
+____________________________________________________________________________________________________________________________________________________
+
+
+
+-- OBSERVATIONS --
+
+1. It is assumed that the 'get_device_id()' function retreives the Device ID as so when it is called, the function internally knows to which device we are referring to (e.g. via UI in an app or similar).
+
+2. It is unclear whether the sensor re sends a packet if it fails. Therefore the 'else' statemes regarding the possible failures are left blank. If the sensor actually re sends the packet, an error message should be sent (to be implemented in these 'else' area)
